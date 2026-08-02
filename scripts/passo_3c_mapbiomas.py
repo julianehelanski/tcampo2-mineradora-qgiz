@@ -116,9 +116,11 @@ if not candidatos:
     print("  Baixe o recorte (veja o guia no topo deste script) e salve lá,")
     print("  com 'mapbiomas' no nome do arquivo. Ex.: mapbiomas_MS_2023.tif")
     raise PareAqui("arquivo do MapBiomas ainda não baixado (veja acima)")
-arquivo_tif = candidatos[0]
+arquivo_tif = candidatos[-1]  # nomes têm o ano no fim: o último é o mais recente
 if len(candidatos) > 1:
-    print(f"⚠ Achei {len(candidatos)} arquivos; usando o primeiro:")
+    print(f"⚠ Achei {len(candidatos)} arquivos; usando o mais recente.")
+    print("  (para carregar outro ano — ex.: 1985 —, renomeie-o ou troque")
+    print("   'candidatos[-1]' pelo índice desejado nesta linha do script)")
 print(f"✔ MapBiomas encontrado: {os.path.basename(arquivo_tif)}")
 
 # Evita duplicar a camada ao re-rodar
