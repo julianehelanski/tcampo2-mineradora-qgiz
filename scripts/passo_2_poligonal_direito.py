@@ -34,6 +34,15 @@ from qgis.core import (
 # ─────────────────────────────────────────────────────────────────────────────
 RAIZ = os.path.expanduser("~/qgis-mineradora")
 
+
+class PareAqui(Exception):
+    """Interrompe o script mostrando a mensagem, SEM fechar o QGIS.
+
+    (Não use SystemExit/sys.exit() em scripts do console do QGIS:
+    isso fecha o programa inteiro.)
+    """
+
+
 print("=" * 60)
 print("PASSO 2 — POLIGONAL SIGMINE (TERRITÓRIO DE DIREITO)")
 print("=" * 60)
@@ -48,7 +57,7 @@ if os.path.isfile(arquivo_projeto):
 else:
     print(f"✘ ERRO: não achei o projeto: {arquivo_projeto}")
     print("  Rode o passo 1 primeiro (e confira o caminho RAIZ).")
-    raise SystemExit
+    raise PareAqui("projeto do passo 1 não encontrado (veja acima)")
 
 # 2. Localizar o shapefile do SIGMINE ----------------------------------------
 # O QGIS lê shapefile dentro de zip pelo prefixo /vsizip/ (recurso do GDAL).
@@ -63,7 +72,7 @@ else:
     print(f"  Esperava: {zip_sigmine}")
     print("  (o arquivo está no repositório; confira se a pasta RAIZ")
     print("   é a pasta do repositório baixado)")
-    raise SystemExit
+    raise PareAqui("sigmine_MS.zip não encontrado (veja acima)")
 
 
 def nova_camada_sigmine(nome):
@@ -71,7 +80,7 @@ def nova_camada_sigmine(nome):
     camada = QgsVectorLayer(fonte, nome, "ogr")
     if not camada.isValid():
         print(f"✘ ERRO ao carregar o shapefile: {fonte}")
-        raise SystemExit
+        raise PareAqui("falha ao carregar o shapefile (veja acima)")
     camada.setProviderEncoding("UTF-8")
     return camada
 

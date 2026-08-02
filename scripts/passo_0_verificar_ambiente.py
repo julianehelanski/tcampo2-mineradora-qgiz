@@ -23,6 +23,15 @@ import os
 # ─────────────────────────────────────────────────────────────────────────────
 RAIZ = os.path.expanduser("~/qgis-mineradora")
 
+
+class PareAqui(Exception):
+    """Interrompe o script mostrando a mensagem, SEM fechar o QGIS.
+
+    (Não use SystemExit/sys.exit() em scripts do console do QGIS:
+    isso fecha o programa inteiro.)
+    """
+
+
 # Subpastas que o projeto usa (criadas aqui se não existirem)
 SUBPASTAS = [
     "dados/exemplo",   # dados sintéticos que acompanham o repositório
@@ -48,7 +57,7 @@ except ImportError:
     print("✘ ERRO: não encontrei a API do QGIS (PyQGIS).")
     print("  Este script deve rodar DENTRO do QGIS, no Console Python,")
     print("  e não no terminal comum. Veja 01_como_rodar.md.")
-    raise SystemExit
+    raise PareAqui("rode este script dentro do QGIS (veja acima)")
 
 # 2. Caminho RAIZ ------------------------------------------------------------
 if os.path.isdir(RAIZ):
@@ -57,7 +66,7 @@ else:
     print(f"✘ ERRO: a pasta não existe: {RAIZ}")
     print("  Edite a linha RAIZ = ... no topo deste script com o caminho")
     print("  onde você salvou a pasta do projeto, e rode de novo.")
-    raise SystemExit
+    raise PareAqui("caminho RAIZ errado (veja a mensagem acima)")
 
 # 3. Subpastas ---------------------------------------------------------------
 for sub in SUBPASTAS:
