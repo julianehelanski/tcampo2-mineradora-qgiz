@@ -1,0 +1,8 @@
+# Cache do Python
+__pycache__/
+*.pyc
+
+# Arquivos temporários do QGIS
+*.qgz~
+*.gpkg-wal
+*.gpkg-shm
