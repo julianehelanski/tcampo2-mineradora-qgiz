@@ -33,6 +33,15 @@ from qgis.core import (
 # ─────────────────────────────────────────────────────────────────────────────
 RAIZ = os.path.expanduser("~/qgis-mineradora")
 
+
+class PareAqui(Exception):
+    """Interrompe o script mostrando a mensagem, SEM fechar o QGIS.
+
+    (Não use SystemExit/sys.exit() em scripts do console do QGIS:
+    isso fecha o programa inteiro.)
+    """
+
+
 # SRC do projeto: SIRGAS 2000 / UTM zona 21 Sul (cobre a região de
 # Bodoquena/Bonito/Corumbá; unidades em metros)
 EPSG_PROJETO = "EPSG:31981"
@@ -48,7 +57,7 @@ print("=" * 60)
 if not os.path.isdir(RAIZ):
     print(f"✘ ERRO: a pasta não existe: {RAIZ}")
     print("  Rode o passo 0 primeiro e use aqui o mesmo caminho RAIZ.")
-    raise SystemExit
+    raise PareAqui("caminho RAIZ errado (veja a mensagem acima)")
 
 
 def camada_xyz(nome, url, zmax=19):
@@ -64,8 +73,14 @@ def camada_xyz(nome, url, zmax=19):
 
 
 # 1. Projeto novo ------------------------------------------------------------
+# iface.newProject() é o jeito seguro de limpar o projeto pela interface;
+# QgsProject.clear() direto pode derrubar o QGIS em algumas versões.
+try:
+    from qgis.utils import iface
+    iface.newProject(False)
+except Exception:
+    QgsProject.instance().clear()
 projeto = QgsProject.instance()
-projeto.clear()  # limpa o que estiver aberto (evita camadas duplicadas ao re-rodar)
 projeto.setTitle("Mineradora de calcário — território de direito × de fato")
 projeto.setCrs(QgsCoordinateReferenceSystem(EPSG_PROJETO))
 print(f"✔ Projeto novo criado (SRC {EPSG_PROJETO})")
