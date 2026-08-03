@@ -144,14 +144,18 @@ camada.setRenderer(renderer)
 print(f"✔ Legenda aplicada ({len(CLASSES)} classes, cores oficiais)")
 
 # 4. Posicionar: acima do satélite, abaixo dos desenhos ----------------------
+# Regra: entrar logo DEPOIS da última camada vetorial (SIGMINE, pegada,
+# entorno) e, portanto, ANTES das camadas de satélite — que são raster.
+# (Se a ordem sair errada mesmo assim, é só arrastar a camada no painel:
+# no QGIS, quem está mais acima na lista cobre quem está abaixo.)
+from qgis.core import QgsVectorLayer as _QgsVectorLayer
+
 projeto.addMapLayer(camada, False)
 raiz_arvore = projeto.layerTreeRoot()
-filhos = raiz_arvore.children()
-posicao = len(filhos)  # padrão: por último (fundo)
-for i, no in enumerate(filhos):
-    if no.name().startswith("Satélite"):
-        posicao = i  # logo acima da primeira camada de satélite
-        break
+posicao = 0
+for i, no in enumerate(raiz_arvore.children()):
+    if hasattr(no, "layer") and isinstance(no.layer(), _QgsVectorLayer):
+        posicao = i + 1
 raiz_arvore.insertLayer(posicao, camada)
 
 if projeto.write(arquivo_projeto):
