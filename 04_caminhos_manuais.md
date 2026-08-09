@@ -91,7 +91,23 @@ satélite antes de qualquer outra camada — o que parece mina? Por quê?*
 5. Para o satélite aparecer por baixo: em cada símbolo, reduza a
    **opacidade** (~50%) — ou use a opacidade da camada, aba *Renderização*.
 
-### 2d. Explorar
+### 2d. Camada extra — só os 7 processos da Bella Pedra
+
+1. No painel de camadas, botão direito na camada `MS` → **Duplicar
+   camada**. Renomeie a cópia para `Bella Pedra (7 processos)`.
+2. Botão direito na cópia → **Filtrar…** e cole:
+   ```sql
+   "NOME" LIKE 'BELLA PEDRA%'
+   ```
+3. OK. Ficam só os 7 polígonos da empresa. Na simbologia, use
+   preenchimento rosa claro com contorno rosa escuro mais grosso, para
+   destacá-los sobre o satélite.
+4. (Opcional) Rótulos: `Propriedades → Rótulos → Rótulos simples`, no
+   campo **Valor** escolha `PROCESSO`, e em *Buffer* ative o halo branco.
+5. Os 7 processos ficam espalhados pelo estado — botão direito na camada
+   → **Aproximar à(s) camada(s)** para enquadrar todos de uma vez.
+
+### 2e. Explorar
 
 - Ferramenta **Identificar feições** (`Ctrl+Shift+I`) → clique num
   polígono → veja `NOME` (titular), `PROCESSO`, `AREA_HA`.

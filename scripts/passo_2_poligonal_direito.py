@@ -8,9 +8,11 @@ O que este script faz:
   1. Reabre o projeto salvo no passo 1 (satélite + SRC configurado).
   2. Carrega o shapefile do SIGMINE-MS direto de dentro do zip
      (dados/reais/sigmine_MS.zip) — sem precisar descompactar.
-  3. Cria DUAS camadas a partir dele:
+  3. Cria TRÊS camadas a partir dele:
        • "SIGMINE MS — todos os processos"  → cinza discreto, desligada
        • "SIGMINE MS — calcário (DIREITO)"  → filtrada, colorida por FASE
+       • "Bella Pedra Cristal (7 processos)" → destaque rosa, rotulada
+         com o nº do processo e a substância
   4. Pinta cada FASE com um tom pastel e destaca a CONCESSÃO DE LAVRA
      (rosa mais forte): são as áreas onde a extração é autorizada de fato.
   5. Aproxima o mapa dos polígonos de calcário e salva o projeto.
@@ -27,7 +29,12 @@ from qgis.core import (
     QgsFillSymbol,
     QgsRendererCategory,
     QgsCategorizedSymbolRenderer,
+    QgsPalLayerSettings,
+    QgsTextFormat,
+    QgsTextBufferSettings,
+    QgsVectorLayerSimpleLabeling,
 )
+from qgis.PyQt.QtGui import QColor
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AJUSTE OBRIGATÓRIO: use o MESMO caminho dos passos 0 e 1.
@@ -160,6 +167,44 @@ for fase, n in sorted(contagem.items(), key=lambda x: -x[1]):
     print(f"   {n:4d} × {fase}")
 print("-" * 60)
 
+# 5b. Camada extra: os 7 processos da Bella Pedra Cristal --------------------
+# A empresa do estudo de caso. O filtro usa o campo NOME (titular do
+# processo); LIKE 'BELLA PEDRA%' protege contra variações no sufixo (LTDA).
+bella = nova_camada_sigmine("Bella Pedra Cristal (7 processos)")
+bella.setSubsetString("\"NOME\" LIKE 'BELLA PEDRA%'")
+print(f"✔ Filtro aplicado: {bella.featureCount()} processos da Bella Pedra")
+
+# Mesmo rosa usado nas linhas da empresa na planilha, com contorno forte
+# para o polígono saltar aos olhos sobre o satélite.
+simbolo_bella = QgsFillSymbol.createSimple({
+    "color": "244,204,224,120",
+    "outline_color": "198,47,123,255",
+    "outline_width": "0.9",
+})
+bella.renderer().setSymbol(simbolo_bella)
+
+# Rótulo com nº do processo + substância (halo branco para ler sobre imagem)
+rotulo = QgsPalLayerSettings()
+rotulo.fieldName = "\"PROCESSO\" || '\\n' || \"SUBS\""
+rotulo.isExpression = True
+formato = QgsTextFormat()
+formato.setSize(8)
+formato.setColor(QColor(120, 20, 70))
+halo = QgsTextBufferSettings()
+halo.setEnabled(True)
+halo.setSize(1)
+halo.setColor(QColor(255, 255, 255))
+formato.setBuffer(halo)
+rotulo.setFormat(formato)
+bella.setLabeling(QgsVectorLayerSimpleLabeling(rotulo))
+bella.setLabelsEnabled(True)
+
+projeto.addMapLayer(bella)
+print("✔ Camada da Bella Pedra adicionada (rosa, rotulada). Processos:")
+for feicao in bella.getFeatures():
+    print(f"   {feicao['PROCESSO']} · {feicao['SUBS']} · {feicao['FASE']}")
+print("-" * 60)
+
 # 6. Aproximar dos polígonos de calcário -------------------------------------
 try:
     from qgis.utils import iface
@@ -187,6 +232,8 @@ print("=" * 60)
 print("PASSO 2 CONCLUÍDO ✔")
 print("Dica: use a ferramenta 'Identificar feições' (Ctrl+Shift+I) e clique")
 print("num polígono rosa para ver o titular (NOME), o processo e a área.")
+print("Os 7 processos da Bella Pedra ficam espalhados pelo estado: botão")
+print("direito na camada dela → 'Aproximar à(s) camada(s)' para vê-los todos.")
 print("Compare: dentro da poligonal, o que o satélite mostra de verdade?")
 print("PRÓXIMO: passo 3 — desenhar a pegada real (território de FATO);")
 print("         leia também 03_desenhar_pegada.md.")
