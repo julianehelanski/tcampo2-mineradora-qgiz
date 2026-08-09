@@ -60,19 +60,25 @@ else:
     raise PareAqui("projeto do passo 1 não encontrado (veja acima)")
 
 # 2. Localizar o shapefile do SIGMINE ----------------------------------------
-# O QGIS lê shapefile dentro de zip pelo prefixo /vsizip/ (recurso do GDAL).
+# Preferência: a pasta dados/reais/sigmine_MS/ (shapefile completo, extraído,
+# que também pode ser aberto direto no QGIS arrastando o MS.shp para o mapa).
+# Alternativas: o zip antigo (o QGIS lê dentro de zip pelo prefixo /vsizip/,
+# recurso do GDAL) ou um MS.shp solto em dados/reais/.
+shp_pasta = os.path.join(RAIZ, "dados", "reais", "sigmine_MS", "MS.shp")
 zip_sigmine = os.path.join(RAIZ, "dados", "reais", "sigmine_MS.zip")
 shp_solto = os.path.join(RAIZ, "dados", "reais", "MS.shp")
-if os.path.isfile(zip_sigmine):
+if os.path.isfile(shp_pasta):
+    fonte = shp_pasta
+elif os.path.isfile(zip_sigmine):
     fonte = "/vsizip/" + zip_sigmine.replace("\\", "/") + "/MS.shp"
 elif os.path.isfile(shp_solto):
     fonte = shp_solto
 else:
     print("✘ ERRO: não achei o SIGMINE em dados/reais/")
-    print(f"  Esperava: {zip_sigmine}")
+    print(f"  Esperava: {shp_pasta}")
     print("  (o arquivo está no repositório; confira se a pasta RAIZ")
     print("   é a pasta do repositório baixado)")
-    raise PareAqui("sigmine_MS.zip não encontrado (veja acima)")
+    raise PareAqui("shapefile do SIGMINE não encontrado (veja acima)")
 
 
 def nova_camada_sigmine(nome):
