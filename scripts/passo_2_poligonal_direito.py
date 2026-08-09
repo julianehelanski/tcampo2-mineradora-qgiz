@@ -62,11 +62,15 @@ else:
 # 2. Localizar o shapefile do SIGMINE ----------------------------------------
 # O QGIS lê shapefile dentro de zip pelo prefixo /vsizip/ (recurso do GDAL).
 zip_sigmine = os.path.join(RAIZ, "dados", "reais", "sigmine_MS.zip")
+# aceita também o shapefile já descompactado, em dois lugares comuns
 shp_solto = os.path.join(RAIZ, "dados", "reais", "MS.shp")
+shp_pasta = os.path.join(RAIZ, "dados", "reais", "sigmine_MS", "MS.shp")
 if os.path.isfile(zip_sigmine):
     fonte = "/vsizip/" + zip_sigmine.replace("\\", "/") + "/MS.shp"
 elif os.path.isfile(shp_solto):
     fonte = shp_solto
+elif os.path.isfile(shp_pasta):
+    fonte = shp_pasta
 else:
     print("✘ ERRO: não achei o SIGMINE em dados/reais/")
     print(f"  Esperava: {zip_sigmine}")
