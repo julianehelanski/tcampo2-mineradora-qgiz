@@ -622,37 +622,56 @@ def gerar_png_area_acumulada(dados: pd.DataFrame) -> Path:
 
 
 def gerar_png_mapa_calor(dados: pd.DataFrame) -> Path:
-    """Mapa de calor: substância × ano, intensidade = processos abertos."""
+    """Mapa de calor: substância × ano, cada família na sua cor.
+
+    A tonalidade identifica a família (como no gráfico de bolhas) e a
+    intensidade (claro → escuro) é o nº de processos abertos no ano,
+    com a MESMA escala em todas as cores.
+    """
     import numpy as np
-    from matplotlib.colors import LinearSegmentedColormap, PowerNorm
+    from matplotlib.colors import LinearSegmentedColormap, PowerNorm, to_rgb
     plt = _preparar_matplotlib()
 
     blocos = blocos_familias(dados)
     anos = list(range(int(dados["Ano_abertura"].min()), DATA_REF.year + 1))
+    bordas_x = np.array(anos + [DATA_REF.year + 1]) - 0.5
+    maximo = max(s.max() for _, _, itens in blocos for _, s in itens)
+    norma = PowerNorm(0.45, vmin=1, vmax=maximo)
 
-    # Matriz com linhas NaN para os títulos de família e o respiro
-    linhas_matriz, rotulos = [], []   # rotulos: (índice, texto, cor, é_fam)
+    def rampa(cor_base):
+        """Do quase-branco à cor escura, passando pela cor da família."""
+        base = np.array(to_rgb(cor_base))
+        clara = 0.85 * np.array(to_rgb(SUPERFICIE)) + 0.15 * base
+        escura = 0.45 * base
+        mapa = LinearSegmentedColormap.from_list(
+            "r", [clara, tuple(base), tuple(escura)])
+        mapa.set_bad(SUPERFICIE)
+        return mapa
+
+    # Cada família vira um bloco de linhas, desenhado com a sua rampa
+    rotulos, blocos_desenho = [], []   # (linha_inicial, matriz, rampa)
+    linha = 0
     for nome_fam, cor, itens in blocos:
-        rotulos.append((len(linhas_matriz), nome_fam, cor, True))
-        linhas_matriz.append([np.nan] * len(anos))
+        rotulos.append((linha, nome_fam, cor, True))
+        linha += 1
+        matriz_fam = []
         for substancia, serie in itens:
-            rotulos.append((len(linhas_matriz), substancia, "#52514e", False))
+            rotulos.append((linha + len(matriz_fam), substancia,
+                            "#52514e", False))
             valores = serie.reindex(anos, fill_value=0).astype(float)
-            linhas_matriz.append(valores.where(valores > 0).tolist())
-        linhas_matriz.append([np.nan] * len(anos))
-    matriz = np.ma.masked_invalid(np.array(linhas_matriz))
+            matriz_fam.append(valores.where(valores > 0).tolist())
+        blocos_desenho.append((linha, np.ma.masked_invalid(matriz_fam),
+                               rampa(cor)))
+        linha += len(matriz_fam) + 1
+    n = linha - 1
 
-    azuis = LinearSegmentedColormap.from_list(
-        "azuis", ["#cde2fb", "#6da7ec", "#2a78d6", "#1c5cab", "#0d366b"])
-    azuis.set_bad(SUPERFICIE)
-
-    n = matriz.shape[0]
     fig, ax = plt.subplots(figsize=(13, 0.235 * (n + 10)))
-    quadros = ax.pcolormesh(
-        np.array(anos + [DATA_REF.year + 1]) - 0.5,
-        np.arange(n + 1) - 0.5,
-        matriz, cmap=azuis, norm=PowerNorm(0.45, vmin=1, vmax=matriz.max()),
-        edgecolors=SUPERFICIE, linewidth=0.4)
+    for linha0, matriz_fam, mapa in blocos_desenho:
+        ax.pcolormesh(bordas_x,
+                      np.arange(linha0, linha0 + matriz_fam.shape[0] + 1)
+                      - 0.5,
+                      matriz_fam, cmap=mapa, norm=norma,
+                      edgecolors=SUPERFICIE, linewidth=0.4)
     ax.invert_yaxis()
     ax.set_axis_off()
 
@@ -668,17 +687,25 @@ def gerar_png_mapa_calor(dados: pd.DataFrame) -> Path:
             fontsize=16, fontweight="bold", color=TINTA)
     ax.text(1912, -3.9,
             "Processos minerários abertos por ano e substância "
-            f"(SIGMINE/ANM, {len(dados)} processos). Quanto mais escuro, "
-            "mais processos no ano.",
+            f"(SIGMINE/ANM, {len(dados)} processos). A cor identifica a "
+            "família; quanto mais escuro, mais processos no ano.",
             fontsize=9, color=MUDO)
 
-    barra = fig.colorbar(quadros, ax=ax, orientation="horizontal",
-                         fraction=0.015, pad=0.02, aspect=45,
-                         ticks=[1, 10, 50, 100, 140])
-    barra.set_label("processos abertos no ano", fontsize=8.5, color=MUDO)
-    barra.ax.tick_params(labelsize=8, colors=MUDO, length=0)
-    barra.outline.set_visible(False)
+    # Escala de intensidade (igual para todas as famílias), em cinza
+    exemplos, x0, y0 = [1, 5, 25, 100, maximo], 1990, n + 3.2
+    cinza = rampa("#898781")
+    for i, v in enumerate(exemplos):
+        x = x0 + i * 4
+        ax.add_patch(plt.Rectangle((x - 1.2, y0 - 0.5), 2.4, 1.4,
+                                   facecolor=cinza(norma(v)),
+                                   edgecolor=SUPERFICIE, clip_on=False))
+        ax.text(x, y0 + 2.2, str(int(v)), ha="center", va="center",
+                fontsize=8, color=MUDO)
+    ax.text(x0 - 4, y0 + 0.2, "processos no ano\n(escala igual em todas "
+            "as cores):", ha="right", va="center", fontsize=8.5, color=MUDO)
+
     ax.set_xlim(1911, 2029)
+    ax.set_ylim(y0 + 3.6, -7.0)
     return _salvar(plt, fig, "mapa_calor_minerios.png")
 
 
