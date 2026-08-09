@@ -7,12 +7,11 @@ projeto NOVO (projeto/bella_pedra.qgz), separado do principal — bom para
 abrir numa segunda janela do QGIS, lado a lado com o outro.
 
 O que este script faz:
-  1. Cria um projeto novo com um FUNDO CLARO e limpo (CARTO Positron:
-     cinza-claro com cidades e estradas discretas — bom para ver pontos
-     coloridos de longe). O satélite (Esri) fica numa camada DESLIGADA:
-     ligue a caixinha dela quando aproximar o zoom num processo.
-     SÓ O MS aparece: o limite oficial do IBGE é baixado na primeira
-     execução e uma máscara esmaece tudo fora do estado.
+  1. Cria um projeto novo com SATÉLITE (Esri), o mesmo fundo do projeto
+     principal. SÓ O MS aparece: o limite oficial do IBGE é baixado na
+     primeira execução e uma máscara esmaece tudo fora do estado.
+     (Há também um fundo claro CARTO Positron, DESLIGADO — ligue a
+     caixinha dele e desligue o satélite se quiser um mapa mais limpo.)
   2. Carrega do shapefile do SIGMINE apenas os 7 processos da
      BELLA PEDRA CRISTAL LTDA.
   3. Estiliza POR MINÉRIO (uma cor para cada substância, com legenda no
@@ -93,12 +92,12 @@ def camada_xyz(nome, url, zmax=19):
                           nome, "wms")
 
 
-# Fundo claro (ligado) + satélite (desligado, para usar no zoom próximo)
+# Satélite (ligado, como no projeto principal) + fundo claro (desligado)
 fundo = camada_xyz(
-    "Fundo claro — CARTO Positron",
+    "Fundo claro — CARTO Positron (alternativa)",
     "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png", zmax=20)
 satelite = camada_xyz(
-    "Satélite — Esri World Imagery (ligue ao aproximar)",
+    "Satélite — Esri World Imagery",
     "https://server.arcgisonline.com/ArcGIS/rest/services/"
     "World_Imagery/MapServer/tile/{z}/{y}/{x}")
 for camada in (fundo, satelite):
@@ -108,10 +107,11 @@ for camada in (fundo, satelite):
     else:
         print(f"⚠ Falha ao criar: {camada.name()} — verifique a internet.")
 
-# Satélite começa desligado; o fundo claro embaixo, o satélite acima dele
-no_satelite = projeto.layerTreeRoot().findLayer(satelite.id())
-if no_satelite:
-    no_satelite.setItemVisibilityChecked(False)
+# O fundo claro começa desligado; para trocar de estilo, inverta as duas
+# caixinhas no painel de camadas (satélite OFF, fundo claro ON).
+no_fundo = projeto.layerTreeRoot().findLayer(fundo.id())
+if no_fundo:
+    no_fundo.setItemVisibilityChecked(False)
 
 # 2b. Só o estado de MS: máscara com o limite oficial do IBGE ----------------
 # Na primeira execução o limite é baixado da API do IBGE e salvo em
@@ -252,8 +252,9 @@ else:
 
 print("=" * 60)
 print("PROJETO BELLA PEDRA CONCLUÍDO ✔")
-print("Fundo claro: os 7 pontos coloridos (um por minério; legenda no")
-print("painel de camadas) aparecem de longe. Para inspecionar um processo,")
-print("aproxime o zoom nele e LIGUE a caixinha da camada de satélite.")
+print("MS em satélite (como no projeto principal), com os 7 pontos")
+print("coloridos — um por minério; legenda no painel de camadas.")
+print("Prefere um mapa mais limpo? Desligue o satélite e ligue o")
+print("'Fundo claro — CARTO Positron' no painel de camadas.")
 print("Nas próximas vezes, abra direto: projeto/bella_pedra.qgz")
 print("=" * 60)
