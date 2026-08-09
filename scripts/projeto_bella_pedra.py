@@ -163,48 +163,51 @@ bella.setProviderEncoding("UTF-8")
 bella.setSubsetString("\"NOME\" LIKE 'BELLA PEDRA%'")
 print(f"✔ Filtro aplicado: {bella.featureCount()} processos da Bella Pedra")
 
-# 4. Estilo por minério: uma cor por substância, com legenda -----------------
-# As cores seguem as famílias dos gráficos do repositório: gemas em rosa,
-# areia em azul, calcita em verde, ferro em laranja.
-CORES_SUBS = {
-    "QUARTZO": "232,123,164",
-    "AMETISTA": "182,80,126",
-    "AREIA": "42,120,214",
-    "CALCITA": "0,131,0",
-    "MINÉRIO DE FERRO": "235,104,52",
+# 4. Simbologia acadêmica: cor sóbria + uma FORMA por minério ----------------
+# Convenções de mapa de dissertação: cores escuras e discretas, formas
+# geométricas distintas (o mapa sobrevive à impressão em preto e branco)
+# e polígono hachurado em vez de mancha colorida.
+SIMBOLOS_SUBS = {
+    "QUARTZO": ("158,80,104", "circle"),
+    "AMETISTA": ("106,61,154", "diamond"),
+    "AREIA": ("31,84,144", "square"),
+    "CALCITA": ("27,94,32", "triangle"),
+    "MINÉRIO DE FERRO": ("166,54,3", "pentagon"),
 }
 
 
-def simbolo_processo(rgb):
-    """Polígono translúcido + ponto colorido no centro (visível de longe)."""
+def simbolo_processo(rgb, forma="circle"):
+    """Polígono hachurado + marcador geométrico no centroide."""
     preenchimento = QgsFillSymbol.createSimple({
-        "color": f"{rgb},55",
+        "style": "f_diagonal",               # hachura diagonal
+        "color": f"{rgb},255",
+        "outline_style": "solid",
         "outline_color": f"{rgb},255",
-        "outline_width": "0.8",
+        "outline_width": "0.45",
     })
     centro = QgsCentroidFillSymbolLayer()
     centro.setSubSymbol(QgsMarkerSymbol.createSimple({
-        "name": "circle",
+        "name": forma,
         "color": f"{rgb},255",
-        "outline_color": "255,255,255,255",
-        "outline_width": "0.8",
-        "size": "4.2",
+        "outline_color": "255,255,255,255",  # filete branco p/ contraste
+        "outline_width": "0.4",
+        "size": "3.4",
     }))
     preenchimento.appendSymbolLayer(centro)
     return preenchimento
 
 
-categorias = [QgsRendererCategory(subs, simbolo_processo(rgb), subs)
-              for subs, rgb in CORES_SUBS.items()]
+categorias = [QgsRendererCategory(subs, simbolo_processo(rgb, forma), subs)
+              for subs, (rgb, forma) in SIMBOLOS_SUBS.items()]
 # categoria "guarda-chuva" para qualquer substância fora da lista
-categorias.append(QgsRendererCategory("", simbolo_processo("137,135,129"),
+categorias.append(QgsRendererCategory("", simbolo_processo("110,110,110"),
                                       "outras"))
 bella.setRenderer(QgsCategorizedSymbolRenderer("SUBS", categorias))
 
-# Rótulo: nº do processo + substância, afastado do ponto, com halo branco
+# Rótulo enxuto: só o nº do processo (o minério está na legenda)
 rotulo = QgsPalLayerSettings()
-rotulo.fieldName = "\"PROCESSO\" || '\\n' || lower(\"SUBS\")"
-rotulo.isExpression = True
+rotulo.fieldName = "PROCESSO"
+rotulo.isExpression = False
 try:  # QGIS ≥ 3.26
     from qgis.core import Qgis
     rotulo.placement = Qgis.LabelPlacement.AroundPoint
@@ -212,8 +215,8 @@ except Exception:  # versões mais antigas
     rotulo.placement = QgsPalLayerSettings.AroundPoint
 rotulo.dist = 2.0
 formato = QgsTextFormat()
-formato.setSize(8.5)
-formato.setColor(QColor(60, 60, 60))
+formato.setSize(8)
+formato.setColor(QColor(35, 35, 35))
 halo = QgsTextBufferSettings()
 halo.setEnabled(True)
 halo.setSize(1.3)
