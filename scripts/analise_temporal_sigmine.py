@@ -45,6 +45,9 @@ ABA_GRAFICOS = "Séries e gráficos"
 # Data de referência para calcular idade e tempo sem movimentação.
 DATA_REF = date(2026, 8, 9)
 
+# Área aproximada de MS (357.145 km²), para as marcas de "% do estado".
+MS_HA = 35_714_500
+
 # Recorte da série por substância (antes de 2000 os dados são esparsos).
 ANO_CORTE = 2000
 
@@ -539,6 +542,201 @@ def gerar_png_bolhas(dados: pd.DataFrame) -> Path:
     return _salvar(plt, fig, "bolhas_minerios_tempo.png")
 
 
+def _familia_de(substancia):
+    for nome_fam, cor, subs in FAMILIAS:
+        if substancia in subs:
+            return nome_fam, cor
+    return "NÃO CLASSIFICADAS", "#c3c2b7"
+
+
+def gerar_png_area_acumulada(dados: pd.DataFrame) -> Path:
+    """Área empilhada: hectares ACUMULADOS sob processo, por família.
+
+    O 'avanço do território de direito': cada faixa é uma família de
+    substâncias; a altura total é quanto chão de MS já foi requisitado.
+    """
+    plt = _preparar_matplotlib()
+
+    fam = dados["Substância"].map(lambda s: _familia_de(s)[0])
+    anos = range(int(dados["Ano_abertura"].min()), DATA_REF.year + 1)
+    acumulado = (dados.assign(Família=fam)
+                 .pivot_table(index="Ano_abertura", columns="Família",
+                              values="Área (ha)", aggfunc="sum",
+                              fill_value=0)
+                 .reindex(anos, fill_value=0).cumsum())
+    # maiores embaixo (empilhamento mais estável de ler)
+    ordem = acumulado.iloc[-1].sort_values(ascending=False).index
+    acumulado = acumulado[ordem]
+    cores = {nome: cor for nome, cor, _ in FAMILIAS}
+    cores["NÃO CLASSIFICADAS"] = "#c3c2b7"
+
+    fig, ax = plt.subplots(figsize=(12, 6.5))
+    ax.stackplot(acumulado.index, acumulado.T.values,
+                 colors=[cores[c] for c in acumulado.columns],
+                 linewidth=0.6, edgecolor=SUPERFICIE)
+    ax.set_axis_off()
+
+    # Marcas discretas de % do estado, à direita
+    for pct in (1, 2, 3, 4, 5):
+        y = MS_HA * pct / 100
+        ax.plot([DATA_REF.year + 0.3, DATA_REF.year + 1.0], [y, y],
+                color=MUDO, linewidth=0.8, clip_on=False)
+        ax.text(DATA_REF.year + 1.6, y, f"{pct}% de MS", va="center",
+                fontsize=8.5, color=MUDO)
+
+    # Décadas no pé
+    for dec in range(1940, 2030, 10):
+        ax.text(dec, -MS_HA * 0.0045, str(dec), ha="center", va="top",
+                fontsize=9, color=MUDO)
+
+    # Legenda-lista no espaço vazio à esquerda, na ordem do empilhamento
+    # (faixa de cima primeiro), com o total final de cada família
+    def _fmt_ha(v):
+        if v >= 1e6:
+            return f"{v/1e6:.2f}".replace(".", ",") + " mi ha"
+        return f"{v/1e3:,.0f}".replace(",", ".") + " mil ha"
+
+    y_lista, passo = MS_HA * 0.052, MS_HA * 0.0042
+    for i, coluna in enumerate(reversed(list(acumulado.columns))):
+        y = y_lista - i * passo
+        ax.scatter([1941.5], [y], s=46, color=cores[coluna],
+                   edgecolors="none", clip_on=False)
+        ax.text(1943.5, y,
+                f"{coluna.capitalize()} — "
+                f"{_fmt_ha(acumulado[coluna].iloc[-1])}",
+                va="center", fontsize=9, color="#52514e")
+
+    total = dados["Área (ha)"].sum()
+    ax.text(1939, MS_HA * 0.068,
+            "O avanço do território de direito",
+            fontsize=16, fontweight="bold", color=TINTA)
+    ax.text(1939, MS_HA * 0.0625,
+            f"Hectares acumulados sob processo minerário em MS, por família "
+            f"de substância (SIGMINE/ANM). Hoje: "
+            f"{total/1e6:.1f}".replace(".", ",") + " milhões de ha = "
+            f"{100*total/MS_HA:.1f}".replace(".", ",") + "% do estado.",
+            fontsize=9, color=MUDO)
+    ax.set_xlim(1938, 2037)
+    ax.set_ylim(0, MS_HA * 0.072)
+    return _salvar(plt, fig, "area_acumulada_familias.png")
+
+
+def gerar_png_mapa_calor(dados: pd.DataFrame) -> Path:
+    """Mapa de calor: substância × ano, intensidade = processos abertos."""
+    import numpy as np
+    from matplotlib.colors import LinearSegmentedColormap, PowerNorm
+    plt = _preparar_matplotlib()
+
+    blocos = blocos_familias(dados)
+    anos = list(range(int(dados["Ano_abertura"].min()), DATA_REF.year + 1))
+
+    # Matriz com linhas NaN para os títulos de família e o respiro
+    linhas_matriz, rotulos = [], []   # rotulos: (índice, texto, cor, é_fam)
+    for nome_fam, cor, itens in blocos:
+        rotulos.append((len(linhas_matriz), nome_fam, cor, True))
+        linhas_matriz.append([np.nan] * len(anos))
+        for substancia, serie in itens:
+            rotulos.append((len(linhas_matriz), substancia, "#52514e", False))
+            valores = serie.reindex(anos, fill_value=0).astype(float)
+            linhas_matriz.append(valores.where(valores > 0).tolist())
+        linhas_matriz.append([np.nan] * len(anos))
+    matriz = np.ma.masked_invalid(np.array(linhas_matriz))
+
+    azuis = LinearSegmentedColormap.from_list(
+        "azuis", ["#cde2fb", "#6da7ec", "#2a78d6", "#1c5cab", "#0d366b"])
+    azuis.set_bad(SUPERFICIE)
+
+    n = matriz.shape[0]
+    fig, ax = plt.subplots(figsize=(13, 0.235 * (n + 10)))
+    quadros = ax.pcolormesh(
+        np.array(anos + [DATA_REF.year + 1]) - 0.5,
+        np.arange(n + 1) - 0.5,
+        matriz, cmap=azuis, norm=PowerNorm(0.45, vmin=1, vmax=matriz.max()),
+        edgecolors=SUPERFICIE, linewidth=0.4)
+    ax.invert_yaxis()
+    ax.set_axis_off()
+
+    for indice, texto, cor, eh_fam in rotulos:
+        ax.text(anos[0] - 2.5, indice, texto, ha="right", va="center",
+                fontsize=8.5 if eh_fam else 8,
+                fontweight="bold" if eh_fam else "normal", color=cor)
+    for dec in range(1940, 2030, 10):
+        ax.text(dec, -2.2, str(dec), ha="center", va="center",
+                fontsize=9, color=MUDO)
+
+    ax.text(1912, -5.6, "Mapa de calor da corrida mineral em MS",
+            fontsize=16, fontweight="bold", color=TINTA)
+    ax.text(1912, -3.9,
+            "Processos minerários abertos por ano e substância "
+            f"(SIGMINE/ANM, {len(dados)} processos). Quanto mais escuro, "
+            "mais processos no ano.",
+            fontsize=9, color=MUDO)
+
+    barra = fig.colorbar(quadros, ax=ax, orientation="horizontal",
+                         fraction=0.015, pad=0.02, aspect=45,
+                         ticks=[1, 10, 50, 100, 140])
+    barra.set_label("processos abertos no ano", fontsize=8.5, color=MUDO)
+    barra.ax.tick_params(labelsize=8, colors=MUDO, length=0)
+    barra.outline.set_visible(False)
+    ax.set_xlim(1911, 2029)
+    return _salvar(plt, fig, "mapa_calor_minerios.png")
+
+
+def gerar_png_dormencia(dados: pd.DataFrame) -> Path:
+    """Dispersão da dormência: quando o processo nasceu × há quanto tempo
+    não se movimenta, colorido pela situação atual (fase agrupada)."""
+    plt = _preparar_matplotlib()
+
+    def situacao(fase):
+        f = (fase or "").upper()
+        if "DISPONIBILIDADE" in f:
+            return "Devolvido / em disponibilidade"
+        if any(p in f for p in ("PESQUISA", "REQUERER")):
+            return "Pesquisa (no papel)"
+        if "NÃO CADASTRADO" in f:
+            return "Não cadastrado"
+        return "Lavra / extração autorizada ou pedida"
+
+    CORES_SITUACAO = {
+        "Pesquisa (no papel)": "#2a78d6",
+        "Lavra / extração autorizada ou pedida": "#eb6834",
+        "Devolvido / em disponibilidade": "#c3c2b7",
+        "Não cadastrado": "#c3c2b7",
+    }
+    validos = dados.dropna(subset=["Anos_sem_movimentacao"])
+
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+    for nome, grupo in validos.groupby(validos["Fase"].map(situacao)):
+        ax.scatter(grupo["Ano_abertura"], grupo["Anos_sem_movimentacao"],
+                   s=10, color=CORES_SITUACAO[nome], alpha=0.4,
+                   edgecolors="none", zorder=3, label=nome)
+
+    ax.grid(visible=False)
+    for lado in ("left", "bottom"):
+        ax.spines[lado].set_visible(False)
+    ax.tick_params(length=0, labelsize=9)
+    ax.set_xlabel("Ano de abertura do processo", fontsize=9.5)
+    ax.set_ylabel("Anos desde a última movimentação", fontsize=9.5)
+
+    ax.set_title("Processos vivos, processos fósseis", loc="left", pad=32)
+    ax.text(0, 1.045,
+            "Cada ponto é um processo minerário de MS: quando nasceu × há "
+            "quanto tempo não se movimenta na ANM (SIGMINE, "
+            f"ref. {DATA_REF.strftime('%m/%Y')}).",
+            transform=ax.transAxes, fontsize=9, color=MUDO)
+
+    parados = int((validos["Anos_sem_movimentacao"] >= 10).sum())
+    ax.annotate(f"{parados} processos sem nenhuma movimentação há 10+ anos",
+                xy=(1994, 10), fontsize=8.5, color="#52514e",
+                xytext=(1948, 22),
+                arrowprops=dict(arrowstyle="-", color=MUDO, linewidth=0.8))
+    legenda = ax.legend(loc="upper right", frameon=False, fontsize=8.5,
+                        markerscale=2.2, labelcolor=TINTA)
+    for alca in legenda.legend_handles:
+        alca.set_alpha(1)
+    return _salvar(plt, fig, "dormencia_processos.png")
+
+
 def gerar_pngs(agregados, dados):
     plt = _preparar_matplotlib()
 
@@ -636,6 +834,9 @@ def principal():
     print(f"Abas '{ABA_NOVA}' e '{ABA_GRAFICOS}' gravadas em {entrada.name}.")
 
     gerar_pngs(agregados, dados)
+    gerar_png_area_acumulada(dados)
+    gerar_png_mapa_calor(dados)
+    gerar_png_dormencia(dados)
     print("Concluído.")
 
 
