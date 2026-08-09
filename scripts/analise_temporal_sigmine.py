@@ -58,10 +58,28 @@ CORES_SERIES = ["2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4"]
 COR_TOTAL = "256ABF"     # série agregada (todos os processos)
 COR_CALCARIO = "008300"  # grupo do calcário (foco do trabalho de campo)
 
-# Bolhas: 7 maiores minérios (mesmas 5 cores acima + violeta e vermelho),
-# grupo do calcário em verde e OUTRAS em cinza neutro.
-CORES_BOLHAS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4",
-                "#4a3aa7", "#e34948", "#008300", "#c3c2b7"]
+# Bolhas: TODAS as substâncias, agrupadas em famílias — cada família com
+# uma cor. A classificação é nossa (não vem da ANM); ajuste à vontade.
+FAMILIAS = [
+    ("CONSTRUÇÃO CIVIL", "#2a78d6", [
+        "AREIA", "BASALTO", "CASCALHO", "ARGILA", "ARENITO", "SAIBRO",
+        "GRANITO", "QUARTZITO", "BASALTO P/ BRITA", "DIABÁSIO",
+        "ARGILA REFRATÁRIA", "ARGILA VERMELHA", "ARDÓSIA", "CONGLOMERADO"]),
+    ("METÁLICOS", "#eb6834", [
+        "MINÉRIO DE FERRO", "MINÉRIO DE COBRE", "ILMENITA",
+        "MINÉRIO DE OURO", "OURO", "MINÉRIO DE MANGANÊS", "FERRO",
+        "MANGANÊS", "HEMATITA", "MINÉRIO DE ZINCO", "MINÉRIO DE CHUMBO",
+        "MINÉRIO DE ARSÊNICO", "MINÉRIO DE TITÂNIO", "MOLIBDENITA"]),
+    ("CALCÁRIO E CARBONATOS", "#008300", [
+        "CALCÁRIO", "CALCÁRIO CALCÍTICO", "CALCÁRIO DOLOMÍTICO",
+        "CALCITA", "MÁRMORE", "DOLOMITO"]),
+    ("INDUSTRIAIS", "#4a3aa7", [
+        "FOSFATO", "TURFA", "GRAFITA", "FOLHELHO"]),
+    ("GEMAS E COLEÇÃO", "#e87ba4", [
+        "DIAMANTE", "QUARTZO", "AMETISTA", "DIAMANTE INDUSTRIAL"]),
+    ("ÁGUA MINERAL", "#1baf7a", ["ÁGUA MINERAL", "ÁGUAS TERMAIS"]),
+    ("NÃO CADASTRADO", "#c3c2b7", ["DADO NÃO CADASTRADO"]),
+]
 
 SUBSTANCIAS_CALCARIO = [
     "CALCÁRIO", "CALCÁRIO CALCÍTICO", "CALCÁRIO DOLOMÍTICO", "CALCITA",
@@ -102,25 +120,56 @@ def extrair_temporal(df: pd.DataFrame) -> pd.DataFrame:
     return saida
 
 
-def agregar_bolhas(dados: pd.DataFrame) -> pd.DataFrame:
-    """Tabela ano × grupo de minério para o gráfico de bolhas.
+def blocos_familias(dados: pd.DataFrame):
+    """Organiza as substâncias em blocos por família, para o gráfico.
 
-    Grupos: os 7 minérios com mais processos desde ANO_CORTE, o grupo do
-    calcário (todas as variantes, sempre presente por ser o foco do
-    trabalho) e OUTRAS com todo o resto. Mais de ~9 linhas o gráfico
-    fica ilegível — os dados têm 40+ substâncias.
+    Devolve [(família, cor, [(substância, série anual), ...]), ...],
+    famílias em ordem de total de processos (a cinza sempre por último),
+    e dentro de cada família as substâncias da maior para a menor.
     """
-    recorte = dados[dados["Ano_abertura"] >= ANO_CORTE]
-    eh_calc = recorte["Substância"].isin(SUBSTANCIAS_CALCARIO)
-    top7 = list(recorte.loc[~eh_calc, "Substância"].value_counts()
-                .head(7).index)
-    grupo = (recorte["Substância"].where(recorte["Substância"].isin(top7))
-             .mask(eh_calc, "CALCÁRIO (grupo)").fillna("OUTRAS"))
-    return (recorte.assign(Grupo=grupo)
-            .pivot_table(index="Ano_abertura", columns="Grupo",
-                         values="Processo", aggfunc="count", fill_value=0)
-            .reindex(range(ANO_CORTE, DATA_REF.year + 1), fill_value=0)
-            [top7 + ["CALCÁRIO (grupo)", "OUTRAS"]])
+    contagem = dados["Substância"].value_counts()
+    matriz = (dados.pivot_table(index="Substância", columns="Ano_abertura",
+                                values="Processo", aggfunc="count",
+                                fill_value=0))
+
+    mapeadas = {s for _, _, subs in FAMILIAS for s in subs}
+    soltas = sorted(set(contagem.index) - mapeadas)
+    familias = list(FAMILIAS)
+    if soltas:  # um SIGMINE futuro pode trazer substâncias novas
+        print(f"⚠ Substâncias fora da classificação (entram em cinza): "
+              f"{soltas}")
+        familias.append(("NÃO CLASSIFICADAS", "#c3c2b7", soltas))
+
+    blocos = []
+    for nome_fam, cor, subs in familias:
+        presentes = sorted((s for s in subs if s in contagem.index),
+                           key=lambda s: -contagem[s])
+        if presentes:
+            blocos.append((nome_fam, cor,
+                           [(s, matriz.loc[s]) for s in presentes]))
+    cinzas = {"NÃO CADASTRADO", "NÃO CLASSIFICADAS"}
+    blocos.sort(key=lambda b: (b[0] in cinzas,
+                               -sum(s.sum() for _, s in b[2])))
+    return blocos
+
+
+def resumo_bolhas(dados: pd.DataFrame) -> pd.DataFrame:
+    """Tabela-resumo por substância (companheira do gráfico de bolhas)."""
+    linhas = []
+    for nome_fam, _, itens in blocos_familias(dados):
+        for substancia, serie in itens:
+            com_valor = serie[serie > 0]
+            pico = com_valor.idxmax()
+            linhas.append({
+                "Família": nome_fam.capitalize(),
+                "Substância": substancia,
+                "Total de processos": int(serie.sum()),
+                "Primeiro ano": int(com_valor.index.min()),
+                "Último ano": int(com_valor.index.max()),
+                "Ano de pico": int(pico),
+                "Processos no pico": int(serie[pico]),
+            })
+    return pd.DataFrame(linhas)
 
 
 # ---------------------------------------------------------------- planilha
@@ -363,31 +412,30 @@ def gravar_aba_graficos(wb, dados: pd.DataFrame):
             "linha_final": fim_t4}
 
 
-def gravar_tabela_bolhas(wb, tabela: pd.DataFrame, caminho_png: Path,
+def gravar_tabela_bolhas(wb, resumo: pd.DataFrame, caminho_png: Path,
                          linha_inicio: int):
-    """Acrescenta a tabela do gráfico de bolhas e o próprio gráfico (PNG)."""
+    """Acrescenta a tabela-resumo por substância e o gráfico de bolhas."""
     ws = wb[ABA_GRAFICOS]
     lin0 = linha_inicio
-    _cabecalho(ws, lin0, ["Ano"] + list(tabela.columns))
+    _cabecalho(ws, lin0, list(resumo.columns))
     lin = lin0
-    for ano, valores in tabela.iterrows():
+    for linha in resumo.itertuples(index=False):
         lin += 1
-        ws.cell(row=lin, column=1, value=int(ano)).font = Font(name=FONTE,
-                                                               size=9)
-        for j, v in enumerate(valores, start=2):
-            ws.cell(row=lin, column=j, value=int(v)).font = Font(name=FONTE,
-                                                                 size=9)
+        for j, v in enumerate(linha, start=1):
+            ws.cell(row=lin, column=j, value=v).font = Font(name=FONTE,
+                                                            size=9)
     nota = ws.cell(row=lin + 1, column=1,
-                   value="Dados do gráfico de bolhas ao lado (aberturas por "
-                         "ano e por minério; bolha maior = mais processos).")
+                   value="Resumo das 45 substâncias do gráfico de bolhas ao "
+                         "lado (todas as substâncias × todos os anos; a "
+                         "classificação em famílias é nossa, não da ANM).")
     nota.font = Font(name=FONTE, size=8, italic=True, color="595959")
 
     from openpyxl.drawing.image import Image as XLImage
     img = XLImage(str(caminho_png))
-    fator = 900 / img.width
+    fator = 760 / img.width
     img.width = int(img.width * fator)
     img.height = int(img.height * fator)
-    ws.add_image(img, f"L{lin0}")  # à direita da tabela (colunas A–J)
+    ws.add_image(img, f"J{lin0}")  # à direita da tabela (colunas A–G)
 
 
 # ---------------------------------------------------------------- PNGs
@@ -423,36 +471,71 @@ def _salvar(plt, fig, nome):
     return caminho
 
 
-def gerar_png_bolhas(tabela: pd.DataFrame) -> Path:
-    """Dispersão de bolhas: ano × minério, bolha maior = mais aberturas."""
+def gerar_png_bolhas(dados: pd.DataFrame) -> Path:
+    """Bolhas minimalistas: todas as substâncias × todos os anos.
+
+    Sem eixos, grade ou marcações — só rótulos flutuando. Cada família
+    tem uma cor; bolha maior = mais processos abertos naquele ano.
+    """
     plt = _preparar_matplotlib()
-    n = len(tabela.columns)
-    ESCALA = 3.2  # área da bolha (pt²) por processo
+    blocos = blocos_familias(dados)
+    ESCALA = 2.2          # área da bolha (pt²) por processo
+    X_ROTULO = 1937.0     # coluna dos rótulos (à esquerda das bolhas)
 
-    fig, ax = plt.subplots(figsize=(11, 6))
-    for i, (coluna, cor) in enumerate(zip(tabela.columns, CORES_BOLHAS)):
-        y = n - 1 - i  # primeira linha (mais processos) no alto
-        serie = tabela[coluna]
+    # Posições verticais: cabeçalho da família, linhas, respiro entre blocos
+    linhas, cabecalhos = [], []
+    y = 0.0
+    for nome_fam, cor, itens in blocos:
+        cabecalhos.append((y, nome_fam, cor))
+        y -= 1.2
+        for substancia, serie in itens:
+            linhas.append((y, substancia, cor, serie))
+            y -= 1.0
+        y -= 1.1
+    y_fim = y
+
+    fig, ax = plt.subplots(figsize=(13, 0.26 * (-y_fim + 12)))
+    ax.set_axis_off()
+
+    for yy, nome_fam, cor in cabecalhos:
+        ax.text(X_ROTULO, yy, nome_fam, ha="right", va="center",
+                fontsize=9, fontweight="bold", color=cor)
+    for yy, substancia, cor, serie in linhas:
         com_valor = serie[serie > 0]
-        ax.scatter(com_valor.index, [y] * len(com_valor),
-                   s=com_valor.values * ESCALA, color=cor,
-                   edgecolors=SUPERFICIE, linewidths=1.2, zorder=3)
-    ax.set_yticks(range(n - 1, -1, -1), tabela.columns)
-    ax.set_ylim(-0.8, n - 0.2)
-    ax.set_title("Aberturas de processos por ano e por minério — MS "
-                 f"({ANO_CORTE}–{DATA_REF.year})", loc="left")
-    ax.set_xlabel("Ano do protocolo")
-    ax.grid(axis="y", visible=False)
-    ax.tick_params(axis="y", length=0)
+        # piso de 6 pt²: sem ele, os anos com 1 processo somem do gráfico
+        ax.scatter(com_valor.index, [yy] * len(com_valor),
+                   s=(com_valor.values * ESCALA).clip(min=6), color=cor,
+                   edgecolors=SUPERFICIE, linewidths=0.8, zorder=3)
+        ax.text(X_ROTULO, yy, substancia, ha="right", va="center",
+                fontsize=8, color="#52514e")
 
-    # Legenda de tamanho (bolhas de referência)
-    for v in (10, 50, 100):
-        ax.scatter([], [], s=v * ESCALA, color="#c3c2b7",
-                   edgecolors=SUPERFICIE, label=str(v))
-    ax.legend(title="processos no ano", loc="upper left",
-              bbox_to_anchor=(1.01, 1.0), frameon=False, labelspacing=1.6,
-              borderpad=0.8, fontsize=8.5, title_fontsize=8.5,
-              labelcolor=TINTA)
+    # Décadas no alto e no pé (referência discreta, sem linhas)
+    for dec in range(1940, 2030, 10):
+        for yy in (1.4, y_fim - 0.6):
+            ax.text(dec, yy, str(dec), ha="center", va="center",
+                    fontsize=9, color=MUDO)
+
+    # Título e subtítulo
+    ax.text(1912, 4.6, "Todos os minérios de MS ao longo do tempo",
+            fontsize=16, fontweight="bold", color=TINTA)
+    ax.text(1912, 3.1,
+            "Cada bolha: processos minerários abertos na ANM naquele ano "
+            f"(SIGMINE, {len(dados)} processos, 1940–{DATA_REF.year}). "
+            "Cores por família de substância.",
+            fontsize=9, color=MUDO)
+
+    # Legenda de tamanho
+    y_leg = y_fim - 3.4
+    ax.text(1984, y_leg, "processos no ano:", ha="right", va="center",
+            fontsize=8.5, color=MUDO)
+    for x, v in ((1990, 5), (1998, 25), (2008, 100)):
+        ax.scatter([x], [y_leg], s=v * ESCALA, color="#c3c2b7",
+                   edgecolors=SUPERFICIE)
+        ax.text(x, y_leg - 1.7, str(v), ha="center", va="center",
+                fontsize=8, color=MUDO)
+
+    ax.set_xlim(1911, 2029)
+    ax.set_ylim(y_leg - 3.0, 5.6)
     return _salvar(plt, fig, "bolhas_minerios_tempo.png")
 
 
@@ -545,9 +628,8 @@ def principal():
     gravar_aba_dados(wb, dados)
     agregados = gravar_aba_graficos(wb, dados)
 
-    bolhas = agregar_bolhas(dados)
-    caminho_bolhas = gerar_png_bolhas(bolhas)
-    gravar_tabela_bolhas(wb, bolhas, caminho_bolhas,
+    caminho_bolhas = gerar_png_bolhas(dados)
+    gravar_tabela_bolhas(wb, resumo_bolhas(dados), caminho_bolhas,
                          agregados["linha_final"] + 3)
 
     wb.save(entrada)
