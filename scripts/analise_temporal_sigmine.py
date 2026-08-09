@@ -58,6 +58,11 @@ CORES_SERIES = ["2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4"]
 COR_TOTAL = "256ABF"     # série agregada (todos os processos)
 COR_CALCARIO = "008300"  # grupo do calcário (foco do trabalho de campo)
 
+# Bolhas: 7 maiores minérios (mesmas 5 cores acima + violeta e vermelho),
+# grupo do calcário em verde e OUTRAS em cinza neutro.
+CORES_BOLHAS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4",
+                "#4a3aa7", "#e34948", "#008300", "#c3c2b7"]
+
 SUBSTANCIAS_CALCARIO = [
     "CALCÁRIO", "CALCÁRIO CALCÍTICO", "CALCÁRIO DOLOMÍTICO", "CALCITA",
 ]
@@ -95,6 +100,27 @@ def extrair_temporal(df: pd.DataFrame) -> pd.DataFrame:
     saida["Bella_Pedra"] = df["Titular"].str.contains(
         "BELLA PEDRA", na=False).map({True: "Sim", False: ""})
     return saida
+
+
+def agregar_bolhas(dados: pd.DataFrame) -> pd.DataFrame:
+    """Tabela ano × grupo de minério para o gráfico de bolhas.
+
+    Grupos: os 7 minérios com mais processos desde ANO_CORTE, o grupo do
+    calcário (todas as variantes, sempre presente por ser o foco do
+    trabalho) e OUTRAS com todo o resto. Mais de ~9 linhas o gráfico
+    fica ilegível — os dados têm 40+ substâncias.
+    """
+    recorte = dados[dados["Ano_abertura"] >= ANO_CORTE]
+    eh_calc = recorte["Substância"].isin(SUBSTANCIAS_CALCARIO)
+    top7 = list(recorte.loc[~eh_calc, "Substância"].value_counts()
+                .head(7).index)
+    grupo = (recorte["Substância"].where(recorte["Substância"].isin(top7))
+             .mask(eh_calc, "CALCÁRIO (grupo)").fillna("OUTRAS"))
+    return (recorte.assign(Grupo=grupo)
+            .pivot_table(index="Ano_abertura", columns="Grupo",
+                         values="Processo", aggfunc="count", fill_value=0)
+            .reindex(range(ANO_CORTE, DATA_REF.year + 1), fill_value=0)
+            [top7 + ["CALCÁRIO (grupo)", "OUTRAS"]])
 
 
 # ---------------------------------------------------------------- planilha
@@ -284,7 +310,7 @@ def gravar_aba_graficos(wb, dados: pd.DataFrame):
                                 max_row=fim_t3))
     for serie, cor in zip(g3.series, CORES_SERIES):
         _estilo_serie(serie, cor, linha=True)
-    ws.add_chart(g3, f"D{lin0}")
+    ws.add_chart(g3, f"H{lin0}")  # à direita da tabela (que vai até a col. F)
 
     # ---- T4: grupo do calcário por ano ------------------------------------
     calc = dados[dados["Substância"].isin(SUBSTANCIAS_CALCARIO)]
@@ -333,19 +359,49 @@ def gravar_aba_graficos(wb, dados: pd.DataFrame):
         ws.column_dimensions[col].width = 12
 
     return {"por_ano": por_ano, "top10": top10, "outras": outras,
-            "tabela_top5": tabela, "por_ano_calc": por_ano_calc}
+            "tabela_top5": tabela, "por_ano_calc": por_ano_calc,
+            "linha_final": fim_t4}
+
+
+def gravar_tabela_bolhas(wb, tabela: pd.DataFrame, caminho_png: Path,
+                         linha_inicio: int):
+    """Acrescenta a tabela do gráfico de bolhas e o próprio gráfico (PNG)."""
+    ws = wb[ABA_GRAFICOS]
+    lin0 = linha_inicio
+    _cabecalho(ws, lin0, ["Ano"] + list(tabela.columns))
+    lin = lin0
+    for ano, valores in tabela.iterrows():
+        lin += 1
+        ws.cell(row=lin, column=1, value=int(ano)).font = Font(name=FONTE,
+                                                               size=9)
+        for j, v in enumerate(valores, start=2):
+            ws.cell(row=lin, column=j, value=int(v)).font = Font(name=FONTE,
+                                                                 size=9)
+    nota = ws.cell(row=lin + 1, column=1,
+                   value="Dados do gráfico de bolhas ao lado (aberturas por "
+                         "ano e por minério; bolha maior = mais processos).")
+    nota.font = Font(name=FONTE, size=8, italic=True, color="595959")
+
+    from openpyxl.drawing.image import Image as XLImage
+    img = XLImage(str(caminho_png))
+    fator = 900 / img.width
+    img.width = int(img.width * fator)
+    img.height = int(img.height * fator)
+    ws.add_image(img, f"L{lin0}")  # à direita da tabela (colunas A–J)
 
 
 # ---------------------------------------------------------------- PNGs
 
 
-def gerar_pngs(agregados, dados):
+SUPERFICIE, TINTA, MUDO, GRADE = "#fcfcfb", "#0b0b0b", "#898781", "#e1e0d9"
+
+
+def _preparar_matplotlib():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     PASTA_GRAFICOS.mkdir(exist_ok=True)
-    SUPERFICIE, TINTA, MUDO, GRADE = "#fcfcfb", "#0b0b0b", "#898781", "#e1e0d9"
     plt.rcParams.update({
         "font.family": "sans-serif", "font.size": 10,
         "figure.facecolor": SUPERFICIE, "axes.facecolor": SUPERFICIE,
@@ -356,12 +412,55 @@ def gerar_pngs(agregados, dados):
         "axes.titlecolor": TINTA, "axes.titlesize": 12,
         "axes.titleweight": "bold",
     })
+    return plt
+
+
+def _salvar(plt, fig, nome):
+    caminho = PASTA_GRAFICOS / nome
+    fig.savefig(caminho, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  PNG: {caminho.relative_to(RAIZ)}")
+    return caminho
+
+
+def gerar_png_bolhas(tabela: pd.DataFrame) -> Path:
+    """Dispersão de bolhas: ano × minério, bolha maior = mais aberturas."""
+    plt = _preparar_matplotlib()
+    n = len(tabela.columns)
+    ESCALA = 3.2  # área da bolha (pt²) por processo
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    for i, (coluna, cor) in enumerate(zip(tabela.columns, CORES_BOLHAS)):
+        y = n - 1 - i  # primeira linha (mais processos) no alto
+        serie = tabela[coluna]
+        com_valor = serie[serie > 0]
+        ax.scatter(com_valor.index, [y] * len(com_valor),
+                   s=com_valor.values * ESCALA, color=cor,
+                   edgecolors=SUPERFICIE, linewidths=1.2, zorder=3)
+    ax.set_yticks(range(n - 1, -1, -1), tabela.columns)
+    ax.set_ylim(-0.8, n - 0.2)
+    ax.set_title("Aberturas de processos por ano e por minério — MS "
+                 f"({ANO_CORTE}–{DATA_REF.year})", loc="left")
+    ax.set_xlabel("Ano do protocolo")
+    ax.grid(axis="y", visible=False)
+    ax.tick_params(axis="y", length=0)
+
+    # Legenda de tamanho (bolhas de referência)
+    for v in (10, 50, 100):
+        ax.scatter([], [], s=v * ESCALA, color="#c3c2b7",
+                   edgecolors=SUPERFICIE, label=str(v))
+    ax.legend(title="processos no ano", loc="upper left",
+              bbox_to_anchor=(1.01, 1.0), frameon=False, labelspacing=1.6,
+              borderpad=0.8, fontsize=8.5, title_fontsize=8.5,
+              labelcolor=TINTA)
+    return _salvar(plt, fig, "bolhas_minerios_tempo.png")
+
+
+def gerar_pngs(agregados, dados):
+    plt = _preparar_matplotlib()
 
     def salvar(fig, nome):
-        caminho = PASTA_GRAFICOS / nome
-        fig.savefig(caminho, dpi=150, bbox_inches="tight")
-        plt.close(fig)
-        print(f"  PNG: {caminho.relative_to(RAIZ)}")
+        _salvar(plt, fig, nome)
 
     # 1 — série temporal geral
     por_ano = agregados["por_ano"]
@@ -445,6 +544,12 @@ def principal():
     wb = load_workbook(entrada)
     gravar_aba_dados(wb, dados)
     agregados = gravar_aba_graficos(wb, dados)
+
+    bolhas = agregar_bolhas(dados)
+    caminho_bolhas = gerar_png_bolhas(bolhas)
+    gravar_tabela_bolhas(wb, bolhas, caminho_bolhas,
+                         agregados["linha_final"] + 3)
+
     wb.save(entrada)
     print(f"Abas '{ABA_NOVA}' e '{ABA_GRAFICOS}' gravadas em {entrada.name}.")
 

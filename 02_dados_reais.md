@@ -54,6 +54,21 @@ risco no campo.
 
 - Busque por: **"ANM SIGBM barragens de mineração"**.
 
+## 6. Unidades de conservação e terras indígenas — CNUC/MMA e FUNAI
+
+Para discutir o entorno da mineração (o Parque Nacional da Serra da
+Bodoquena fica na mesma região calcária), baixe as poligonais oficiais:
+
+- **Unidades de conservação**: busque por **"CNUC MMA download shapefile
+  unidades de conservação"**. Salve o conteúdo descompactado em
+  `dados/reais/unidades_conservacao/`.
+- **Terras indígenas**: busque por **"FUNAI geoserver download shapefile
+  terras indígenas"**. Salve em `dados/reais/terras_indigenas/`.
+- O script `passo_1b_referencias.py` detecta essas duas pastas e carrega
+  os shapefiles automaticamente, já estilizados. Sem elas, o
+  OpenStreetMap (também adicionado pelo `passo_1b`) já mostra parques e
+  reservas em verde, o que resolve para visualização.
+
 ---
 
 ## Como levar isso para os scripts

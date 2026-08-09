@@ -57,6 +57,45 @@ satélite antes de qualquer outra camada — o que parece mina? Por quê?*
 
 ---
 
+## Caminho 1b — Cidades, rodovias e reservas (espelho do `passo_1b`)
+
+O satélite sozinho não tem nome de nada. Duas soluções que se somam:
+
+### 1b-a. Nomes e rodovias POR CIMA do satélite
+
+1. No painel **Navegador** (à esquerda; se não aparecer:
+   `Exibir → Painéis → Navegador`), botão direito em **XYZ Tiles →
+   Nova conexão…**
+2. Crie estas duas conexões (nome e URL), e arraste cada uma para o mapa:
+   ```
+   Rodovias (Esri)
+   https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}
+
+   Nomes de lugares (Esri)
+   https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}
+   ```
+3. No painel de camadas, arraste as duas para **cima** da camada de
+   satélite. Elas são transparentes: só desenham linhas e nomes.
+
+### 1b-b. Mapa de ruas completo (parques e reservas em verde)
+
+1. Crie mais uma conexão XYZ:
+   ```
+   OpenStreetMap
+   https://tile.openstreetmap.org/{z}/{x}/{y}.png
+   ```
+2. Arraste para o mapa e deixe **abaixo** do satélite. Para consultá-lo,
+   desligue a caixinha da camada de satélite: aparecem cidades, rodovias
+   com número (BR-262…), e as áreas protegidas em verde com nome — como o
+   Parque Nacional da Serra da Bodoquena, vizinho da região calcária.
+
+Para as **poligonais oficiais** de unidades de conservação (CNUC/MMA) e
+terras indígenas (FUNAI), veja a seção 6 de `02_dados_reais.md` — o
+`passo_1b` carrega esses shapefiles automaticamente se estiverem em
+`dados/reais/`.
+
+---
+
 ## Caminho 2 — SIGMINE: o território de direito (espelho do `passo_2`)
 
 ### 2a. Carregar o shapefile
