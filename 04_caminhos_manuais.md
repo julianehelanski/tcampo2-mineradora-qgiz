@@ -292,6 +292,12 @@ Mineração (algoritmo), a poligonal SIGMINE (Estado) e o desenho da turma
 
 ## Caminho 5 — Layout de impressão (espelho do `passo_5`)
 
+> Para a prancha do mapa da Bella Pedra existe um script pronto no mesmo
+> molde: `passo_5b_layout_bella_pedra.py` (funciona no projeto
+> `bella_pedra.qgz` ou no principal depois do `passo_2b`; exporta
+> `saidas/mapa_bella_pedra.png` e `.pdf`). Os passos manuais abaixo valem
+> igualmente para ele.
+
 1. Enquadre o mapa na tela como quer no papel.
 2. `Projeto → Novo layout de impressão…` → dê um nome.
 3. Na janela do layout, botão direito na página → `Propriedades da
