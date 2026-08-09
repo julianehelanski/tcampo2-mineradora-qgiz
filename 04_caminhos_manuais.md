@@ -61,10 +61,12 @@ satélite antes de qualquer outra camada — o que parece mina? Por quê?*
 
 ### 2a. Carregar o shapefile
 
-1. Abra a pasta do repositório no Explorador de Arquivos e localize
-   `dados\reais\sigmine_MS.zip`.
-2. **Arraste o zip** para dentro do mapa do QGIS. Ele lê o shapefile sem
-   descompactar. (Se perguntar qual camada, escolha `MS`.)
+1. Abra a pasta do repositório no Explorador de Arquivos e localize a
+   pasta `dados\reais\sigmine_MS\` (shapefile completo do SIGMINE, já
+   descompactado).
+2. **Arraste o arquivo `MS.shp`** para dentro do mapa do QGIS. Os outros
+   arquivos da pasta (`.dbf`, `.prj`, `.shx`…) são partes do mesmo
+   shapefile — precisam ficar juntos, mas só o `.shp` é arrastado.
 
 ### 2b. Filtrar só o calcário
 
