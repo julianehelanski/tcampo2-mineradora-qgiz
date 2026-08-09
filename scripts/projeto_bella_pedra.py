@@ -11,6 +11,8 @@ O que este script faz:
      cinza-claro com cidades e estradas discretas — bom para ver pontos
      coloridos de longe). O satélite (Esri) fica numa camada DESLIGADA:
      ligue a caixinha dela quando aproximar o zoom num processo.
+     SÓ O MS aparece: o limite oficial do IBGE é baixado na primeira
+     execução e uma máscara esmaece tudo fora do estado.
   2. Carrega do shapefile do SIGMINE apenas os 7 processos da
      BELLA PEDRA CRISTAL LTDA.
   3. Estiliza POR MINÉRIO (uma cor para cada substância, com legenda no
@@ -35,6 +37,8 @@ from qgis.core import (
     QgsCentroidFillSymbolLayer,
     QgsRendererCategory,
     QgsCategorizedSymbolRenderer,
+    QgsSingleSymbolRenderer,
+    QgsInvertedPolygonRenderer,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsPalLayerSettings,
@@ -108,6 +112,47 @@ for camada in (fundo, satelite):
 no_satelite = projeto.layerTreeRoot().findLayer(satelite.id())
 if no_satelite:
     no_satelite.setItemVisibilityChecked(False)
+
+# 2b. Só o estado de MS: máscara com o limite oficial do IBGE ----------------
+# Na primeira execução o limite é baixado da API do IBGE e salvo em
+# dados/reais/limite_MS.geojson; depois é lido do disco. A "máscara" pinta
+# de branco translúcido tudo o que está FORA de MS (renderizador de
+# polígono invertido) — sobra o estado, com a divisa desenhada.
+caminho_limite = os.path.join(RAIZ, "dados", "reais", "limite_MS.geojson")
+if not os.path.isfile(caminho_limite):
+    try:
+        import urllib.request
+        url_ibge = (
+            "https://servicodados.ibge.gov.br/api/v3/malhas/estados/50"
+            "?formato=application/vnd.geo+json&qualidade=intermediaria")
+        pedido = urllib.request.Request(url_ibge,
+                                        headers={"User-Agent": "QGIS"})
+        with urllib.request.urlopen(pedido, timeout=30) as resposta, \
+                open(caminho_limite, "wb") as arquivo:
+            arquivo.write(resposta.read())
+        print("✔ Limite de MS baixado do IBGE → dados/reais/limite_MS.geojson")
+    except Exception as erro:
+        print(f"⚠ Não consegui baixar o limite de MS do IBGE: {erro}")
+        print("  O mapa segue sem a máscara do estado (só desta vez;")
+        print("  rode de novo com internet que ele tenta outra vez).")
+
+limite = None
+if os.path.isfile(caminho_limite):
+    limite = QgsVectorLayer(caminho_limite,
+                            "Mato Grosso do Sul (limite IBGE)", "ogr")
+    if limite.isValid():
+        mascara = QgsFillSymbol.createSimple({
+            "color": "252,252,251,215",      # véu branco fora do estado
+            "outline_color": "110,110,110,255",
+            "outline_width": "0.5",
+        })
+        limite.setRenderer(
+            QgsInvertedPolygonRenderer(QgsSingleSymbolRenderer(mascara)))
+        projeto.addMapLayer(limite)
+        print("✔ Máscara aplicada: só MS visível, divisa desenhada")
+    else:
+        limite = None
+        print("⚠ Baixei o limite mas não consegui lê-lo; sigo sem máscara.")
 
 # 3. Só os processos da Bella Pedra ------------------------------------------
 bella = QgsVectorLayer(fonte, "Bella Pedra Cristal (7 processos)", "ogr")
@@ -183,16 +228,17 @@ print("✔ Estilo aplicado (uma cor por minério + rótulos). Processos:")
 for feicao in bella.getFeatures():
     print(f"   {feicao['PROCESSO']} · {feicao['SUBS']} · {feicao['FASE']}")
 
-# 5. Enquadrar os 7 processos ------------------------------------------------
+# 5. Enquadrar o estado (ou, sem o limite, os 7 processos) -------------------
 try:
     from qgis.utils import iface
-    transf = QgsCoordinateTransform(bella.crs(), projeto.crs(),
+    referencia = limite if limite is not None else bella
+    transf = QgsCoordinateTransform(referencia.crs(), projeto.crs(),
                                     projeto.transformContext())
-    extensao = transf.transformBoundingBox(bella.extent())
-    extensao.scale(1.15)
+    extensao = transf.transformBoundingBox(referencia.extent())
+    extensao.scale(1.06)
     iface.mapCanvas().setExtent(extensao)
     iface.mapCanvas().refresh()
-    print("✔ Mapa enquadrado nos 7 processos")
+    print(f"✔ Mapa enquadrado: {referencia.name()}")
 except Exception as erro:
     print(f"⚠ Não consegui ajustar o zoom automaticamente: {erro}")
 
